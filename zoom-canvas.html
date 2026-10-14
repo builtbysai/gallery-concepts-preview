@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Zoom Canvas · Generative Doodles</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #050506; }
+  body { font-family: Georgia, serif; color: #e8e4dc; }
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #cv.drag { cursor: grabbing; }
+  .hud { position: fixed; z-index: 10; pointer-events: none; }
+  #topbar { top: 0; left: 0; right: 0; padding: 18px 24px; display: flex; justify-content: space-between; align-items: baseline; background: linear-gradient(rgba(0,0,0,.6), transparent); }
+  #topbar h1 { font-size: 12px; font-weight: 400; letter-spacing: .3em; text-transform: uppercase; opacity: .65; }
+  #count { font-size: 12px; letter-spacing: .15em; opacity: .5; }
+  #hint { bottom: 16px; left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: .12em; opacity: .42; }
+  #view { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(4,4,5,.88); backdrop-filter: blur(10px); }
+  #view.show { display: flex; }
+  #view .frame { max-width: 92vw; text-align: center; }
+  #view canvas { width: min(78vw, 52vh); height: min(78vw, 52vh); border-radius: 8px; box-shadow: 0 20px 80px rgba(0,0,0,.8); }
+  #view .t { font-size: 24px; margin-top: 18px; }
+  #view .d { font-size: 13px; opacity: .55; margin-top: 6px; letter-spacing: .12em; }
+  #view .x { position: absolute; top: 22px; right: 30px; font-size: 15px; letter-spacing: .2em; text-transform: uppercase; opacity: .6; cursor: pointer; padding: 10px; }
+  #zoomctl { position: fixed; z-index: 10; right: 18px; bottom: 52px; display: flex; flex-direction: column; gap: 10px; }
+  #zoomctl button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.07); color: #fff; font-size: 20px; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud" id="topbar"><h1>Generative Doodles</h1><div id="count">600 pieces · scroll to dive in</div></div>
+<div class="hud" id="hint">scroll or pinch to zoom · drag to pan · click a piece to open it</div>
+<div id="zoomctl"><button id="zin">+</button><button id="zout">−</button></div>
+<div id="view">
+  <div class="x" id="close">Close</div>
+  <div class="frame"><canvas id="big" width="640" height="640"></canvas><div class="t"></div><div class="d"></div></div>
+</div>
+
+<script>
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function dateFor(n){ const d=new Date(2002,0,10); d.setDate(d.getDate()+n+1);
+  const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()} · ${p(d.getMonth()+1)} · ${p(d.getDate())}`; }
+
+/* generative thumbnails, shared painter */
+function paintPiece(cv, seed, S){
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const R = mulberry32(seed);
+  const style = seed % 6, hue = Math.floor(R()*360);
+  c.fillStyle = '#0b0b0e'; c.fillRect(0,0,W,H);
+  const u = S / 128; // scale factor vs 128px reference
+  if(style===0){
+    for(let i=0;i<30;i++){ c.strokeStyle=`hsla(${(hue+i*9)%360},70%,${52+R()*18}%,.55)`; c.lineWidth=(1+R()*2)*u;
+      const y0=R()*H; c.beginPath(); c.moveTo(0,y0);
+      c.bezierCurveTo(W*.3,y0+(R()-.5)*120*u, W*.6,y0+(R()-.5)*120*u, W,y0+(R()-.5)*80*u); c.stroke(); }
+  } else if(style===1){
+    const n=8; for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+      const r=(2+R()*8)*u*(0.4+0.6*Math.abs(Math.sin(i*.7+j*.5+seed)));
+      c.fillStyle=`hsla(${(hue+R()*50)%360},65%,${50+R()*20}%,.85)`;
+      c.beginPath(); c.arc(W*(i+.5)/n, H*(j+.5)/n, r, 0, 7); c.fill(); }
+  } else if(style===2){
+    for(let i=9;i>0;i--){ c.strokeStyle=`hsla(${(hue+i*14)%360},72%,${48+R()*22}%,.7)`; c.lineWidth=(2+R()*3)*u;
+      c.beginPath(); c.arc(W/2,H/2,i*Math.min(W,H)/20,0,7); c.stroke(); }
+  } else if(style===3){
+    const n=54; for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+R()*.1, l=R()*Math.min(W,H)*.48;
+      c.strokeStyle=`hsla(${(hue+i*6)%360},70%,${50+R()*20}%,.6)`; c.lineWidth=(1+R()*1.5)*u;
+      c.beginPath(); c.moveTo(W/2,H/2); c.lineTo(W/2+Math.cos(a)*l, H/2+Math.sin(a)*l); c.stroke(); }
+  } else if(style===4){
+    for(let j=0;j<12;j++){ c.fillStyle=`hsla(${(hue+j*12)%360},62%,${30+R()*30}%,.5)`;
+      c.beginPath(); const yb=j*H/12; c.moveTo(0,yb);
+      for(let x=0;x<=W;x+=8) c.lineTo(x, yb+Math.sin(x*.03+j)*10*u);
+      c.lineTo(W,H); c.lineTo(0,H); c.fill(); }
+  } else {
+    for(let i=0;i<60;i++){ const r=(2+R()*9)*u;
+      const g=c.createRadialGradient(0,0,0,0,0,r);
+      g.addColorStop(0,`hsla(${(hue+R()*60)%360},75%,65%,.9)`); g.addColorStop(1,'hsla(0,0%,0%,0)');
+      c.save(); c.translate(R()*W,R()*H); c.fillStyle=g; c.beginPath(); c.arc(0,0,r,0,7); c.fill(); c.restore(); }
+  }
+  const v=c.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.75);
+  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.4)');
+  c.fillStyle=v; c.fillRect(0,0,W,H);
+}
+
+/* ---------- build the collection ---------- */
+const FAMS = [
+  { name: 'Deep Water', hue: 200, css: '#3fa7d6' },
+  { name: 'Ember', hue: 18, css: '#e07a3f' },
+  { name: 'Moss', hue: 140, css: '#5fc06a' },
+  { name: 'Violet Hour', hue: 280, css: '#9a6ee8' },
+  { name: 'Bone', hue: 45, css: '#d8c98a' },
+  { name: 'Signal', hue: 330, css: '#e85a9a' },
+];
+const W1=['Night','Ember','Salt','Glass','Paper','Tide','Low','Static','Velvet','Iron','Moss','Neon','Hollow','Amber','Drift','Quiet'];
+const W2=['Water','Field','Study','Storm','Orchard','Circuit','Ledger','Garden','Signal','Harbor','Bloom','Choir','Vessel','Mirror','Route','Hymn'];
+const N = 600, pieces = [];
+{
+  const R = mulberry32(99);
+  for(let i=0;i<N;i++){
+    const f = i % FAMS.length;
+    const a = R()*Math.PI*2, rr = 900 + f*260;
+    const cx = Math.cos(f/FAMS.length*Math.PI*2 - Math.PI/2)*rr;
+    const cy = Math.sin(f/FAMS.length*Math.PI*2 - Math.PI/2)*rr;
+    const spread = 420 + R()*260;
+    const num = 1 + Math.floor(R()*9077);
+    pieces.push({
+      num, fam: f,
+      title: W1[Math.floor(R()*W1.length)] + ' ' + W2[Math.floor(R()*W2.length)],
+      date: dateFor(num),
+      x: cx + (R()-.5)*2*spread, y: cy + (R()-.5)*2*spread,
+      seed: num*7919+13,
+      thumb: null,
+    });
+  }
+  // pre-render thumbnails
+  for(const p of pieces){
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    paintPiece(cv, p.seed, 128); p.thumb = cv;
+  }
+}
+
+/* ---------- camera ---------- */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let W, H, DPR;
+function size(){ DPR = Math.min(devicePixelRatio, 2); W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+size(); addEventListener('resize', size);
+
+const cam = { x: 0, y: 0, z: .12 }, tgt = { x: 0, y: 0, z: .12 };
+const ZMIN = .06, ZMAX = 14;
+function w2s(wx, wy){ return [(wx - cam.x)*cam.z + W/2, (wy - cam.y)*cam.z + H/2]; }
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = Math.pow(1.0016, -e.deltaY);
+  const nz = Math.max(ZMIN, Math.min(ZMAX, tgt.z * f));
+  // zoom toward cursor
+  const mx = e.clientX - W/2, my = e.clientY - H/2;
+  tgt.x += mx/tgt.z - mx/nz; tgt.y += my/tgt.z - my/nz; tgt.z = nz;
+}, { passive: false });
+
+// pan + pinch + tap
+const pts = new Map(); let pinchD = 0, moved = 0, downAt = 0;
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  moved = 0; downAt = performance.now();
+  if(pts.size === 2){ const a=[...pts.values()]; pinchD = Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y); }
+  cv.classList.add('drag');
+});
+cv.addEventListener('pointermove', e => {
+  if(!pts.has(e.pointerId)) return;
+  const p = pts.get(e.pointerId);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  moved += Math.abs(dx) + Math.abs(dy);
+  p.x = e.clientX; p.y = e.clientY;
+  if(pts.size === 1){ tgt.x -= dx/tgt.z; tgt.y -= dy/tgt.z; }
+  else if(pts.size === 2){
+    const a=[...pts.values()], d = Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y);
+    if(pinchD > 0){ tgt.z = Math.max(ZMIN, Math.min(ZMAX, tgt.z * d/pinchD)); }
+    pinchD = d;
+  }
+});
+cv.addEventListener('pointerup', e => {
+  pts.delete(e.pointerId);
+  cv.classList.remove('drag');
+  if(moved < 8 && performance.now() - downAt < 400) tap(e.clientX, e.clientY);
+});
+cv.addEventListener('pointercancel', e => pts.delete(e.pointerId));
+document.getElementById('zin').addEventListener('click', () => tgt.z = Math.min(ZMAX, tgt.z*1.5));
+document.getElementById('zout').addEventListener('click', () => tgt.z = Math.max(ZMIN, tgt.z/1.5));
+
+/* ---------- open a piece ---------- */
+const view = document.getElementById('view'), big = document.getElementById('big');
+function tap(sx, sy){
+  let best = null, bd = 30;
+  for(const p of pieces){
+    const [x, y] = w2s(p.x, p.y);
+    const d = Math.hypot(x - sx, y - sy);
+    if(d < bd){ bd = d; best = p; }
+  }
+  if(best){
+    big.width = big.height = 640;
+    paintPiece(big, best.seed, 640);
+    view.querySelector('.t').textContent = `№${best.num} · ${best.title}`;
+    view.querySelector('.d').textContent = best.date;
+    view.classList.add('show');
+  }
+}
+document.getElementById('close').addEventListener('click', () => view.classList.remove('show'));
+view.addEventListener('click', e => { if(e.target === view) view.classList.remove('show'); });
+
+/* ---------- render ---------- */
+const countEl = document.getElementById('count');
+function frame(){
+  requestAnimationFrame(frame);
+  cam.x += (tgt.x - cam.x)*.14; cam.y += (tgt.y - cam.y)*.14; cam.z += (tgt.z - cam.z)*.14;
+  ctx.fillStyle = '#050506'; ctx.fillRect(0, 0, W, H);
+  const z = cam.z;
+  // cluster glow + labels at far zoom
+  if(z < .55){
+    for(let f=0; f<FAMS.length; f++){
+      const a = f/FAMS.length*Math.PI*2 - Math.PI/2, rr = 900 + f*260;
+      const [sx, sy] = w2s(Math.cos(a)*rr, Math.sin(a)*rr);
+      const gr = ctx.createRadialGradient(sx,sy,0,sx,sy,340*z);
+      gr.addColorStop(0, FAMS[f].css + '22'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(sx, sy, 340*z, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(232,228,220,.6)';
+      ctx.font = `${Math.max(11, 15*z*2)}px Georgia`;
+      ctx.textAlign = 'center';
+      ctx.fillText(FAMS[f].name, sx, sy - 200*z);
+    }
+  }
+  const dot = z < .5;
+  for(const p of pieces){
+    const [sx, sy] = w2s(p.x, p.y);
+    if(sx < -80 || sy < -80 || sx > W+80 || sy > H+80) continue;
+    if(dot){
+      ctx.fillStyle = FAMS[p.fam].css + 'cc';
+      ctx.beginPath(); ctx.arc(sx, sy, 2.4, 0, 7); ctx.fill();
+    } else {
+      const s = Math.min(128*z, 320);
+      ctx.drawImage(p.thumb, sx - s/2, sy - s/2, s, s);
+    }
+  }
+  countEl.textContent = z < .5 ? '600 pieces · scroll to dive in'
+    : z < 3 ? 'the clusters resolve' : 'click any piece to open it';
+}
+frame();
+</script>
+</body>
+</html>

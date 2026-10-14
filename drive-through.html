@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Drive Through · Generative Doodles</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #070708; }
+  body { font-family: Georgia, serif; color: #e8e4dc; }
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .hud { position: fixed; z-index: 10; pointer-events: none; }
+  #topbar { top: 0; left: 0; right: 0; padding: 18px 24px; display: flex; justify-content: space-between; align-items: baseline; background: linear-gradient(rgba(0,0,0,.6), transparent); }
+  #topbar h1 { font-size: 12px; font-weight: 400; letter-spacing: .3em; text-transform: uppercase; opacity: .65; }
+  #speed { font-size: 12px; letter-spacing: .15em; opacity: .5; }
+  #hint { bottom: 16px; left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: .12em; opacity: .42; }
+  #card { bottom: 52px; left: 50%; transform: translateX(-50%) translateY(8px); background: rgba(10,10,12,.85); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 14px 24px; text-align: center; opacity: 0; transition: opacity .25s, transform .25s; backdrop-filter: blur(8px); max-width: 86vw; white-space: nowrap; }
+  #card.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #card .t { font-size: 19px; }
+  #card .d { font-size: 12px; opacity: .55; margin-top: 4px; letter-spacing: .1em; }
+  #map { position: fixed; z-index: 10; top: 64px; right: 18px; border: 1px solid rgba(255,255,255,.16); border-radius: 8px; background: rgba(8,8,10,.7); }
+  #pad { position: fixed; z-index: 15; inset: auto 0 0 0; display: none; justify-content: space-between; padding: 0 22px 90px; pointer-events: none; }
+  body.touch #pad { display: flex; }
+  body.touch #hint { display: none; }
+  .pbtn { pointer-events: auto; width: 74px; height: 74px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: #fff; font-size: 26px; display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; }
+  .pbtn.on { background: rgba(255,255,255,.28); }
+  .pgrp { display: flex; gap: 14px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="hud" id="topbar"><h1>Generative Doodles</h1><div id="speed">0 km/h</div></div>
+<div class="hud" id="hint">WASD or arrows to drive · roll up to a monolith to read it</div>
+<canvas id="map" width="150" height="110"></canvas>
+<div class="hud" id="card"><div class="t"></div><div class="d"></div></div>
+<div id="pad">
+  <div class="pgrp"><div class="pbtn" id="bl">◀</div><div class="pbtn" id="br">▶</div></div>
+  <div class="pgrp"><div class="pbtn" id="bd">▼</div><div class="pbtn" id="bu">▲</div></div>
+</div>
+
+<script>
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function dateFor(n){ const d=new Date(2002,0,10); d.setDate(d.getDate()+n+1);
+  const p=x=>String(x).padStart(2,'0'); return `${d.getFullYear()} · ${p(d.getMonth()+1)} · ${p(d.getDate())}`; }
+function paintPiece(cv, seed, S){
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const R = mulberry32(seed);
+  const style = seed % 6, hue = Math.floor(R()*360);
+  c.fillStyle = '#0b0b0e'; c.fillRect(0,0,W,H);
+  const u = S / 128;
+  if(style===0){
+    for(let i=0;i<30;i++){ c.strokeStyle=`hsla(${(hue+i*9)%360},70%,${52+R()*18}%,.55)`; c.lineWidth=(1+R()*2)*u;
+      const y0=R()*H; c.beginPath(); c.moveTo(0,y0);
+      c.bezierCurveTo(W*.3,y0+(R()-.5)*120*u, W*.6,y0+(R()-.5)*120*u, W,y0+(R()-.5)*80*u); c.stroke(); }
+  } else if(style===1){
+    const n=8; for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+      const r=(2+R()*8)*u*(0.4+0.6*Math.abs(Math.sin(i*.7+j*.5+seed)));
+      c.fillStyle=`hsla(${(hue+R()*50)%360},65%,${50+R()*20}%,.85)`;
+      c.beginPath(); c.arc(W*(i+.5)/n, H*(j+.5)/n, r, 0, 7); c.fill(); }
+  } else if(style===2){
+    for(let i=9;i>0;i--){ c.strokeStyle=`hsla(${(hue+i*14)%360},72%,${48+R()*22}%,.7)`; c.lineWidth=(2+R()*3)*u;
+      c.beginPath(); c.arc(W/2,H/2,i*Math.min(W,H)/20,0,7); c.stroke(); }
+  } else if(style===3){
+    const n=54; for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+R()*.1, l=R()*Math.min(W,H)*.48;
+      c.strokeStyle=`hsla(${(hue+i*6)%360},70%,${50+R()*20}%,.6)`; c.lineWidth=(1+R()*1.5)*u;
+      c.beginPath(); c.moveTo(W/2,H/2); c.lineTo(W/2+Math.cos(a)*l, H/2+Math.sin(a)*l); c.stroke(); }
+  } else if(style===4){
+    for(let j=0;j<12;j++){ c.fillStyle=`hsla(${(hue+j*12)%360},62%,${30+R()*30}%,.5)`;
+      c.beginPath(); const yb=j*H/12; c.moveTo(0,yb);
+      for(let x=0;x<=W;x+=8) c.lineTo(x, yb+Math.sin(x*.03+j)*10*u);
+      c.lineTo(W,H); c.lineTo(0,H); c.fill(); }
+  } else {
+    for(let i=0;i<60;i++){ const r=(2+R()*9)*u;
+      const g=c.createRadialGradient(0,0,0,0,0,r);
+      g.addColorStop(0,`hsla(${(hue+R()*60)%360},75%,65%,.9)`); g.addColorStop(1,'hsla(0,0%,0%,0)');
+      c.save(); c.translate(R()*W,R()*H); c.fillStyle=g; c.beginPath(); c.arc(0,0,r,0,7); c.fill(); c.restore(); }
+  }
+  const v=c.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.75);
+  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.4)');
+  c.fillStyle=v; c.fillRect(0,0,W,H);
+}
+
+/* ---------- world ---------- */
+const WW = 3600, WH = 2600;
+const ZONES = [
+  { name: 'The Blue Wing', hue: 200, css: '#3fa7d6', x0: 0, y0: 0, x1: WW/2, y1: WH/2 },
+  { name: 'The Ember Wing', hue: 18, css: '#e07a3f', x0: WW/2, y0: 0, x1: WW, y1: WH/2 },
+  { name: 'The Moss Wing', hue: 140, css: '#5fc06a', x0: 0, y0: WH/2, x1: WW/2, y1: WH },
+  { name: 'The Violet Wing', hue: 280, css: '#9a6ee8', x0: WW/2, y0: WH/2, x1: WW, y1: WH },
+];
+const W1=['Night','Ember','Salt','Glass','Paper','Tide','Low','Static','Velvet','Iron','Moss','Neon','Hollow','Amber','Drift','Quiet'];
+const W2=['Water','Field','Study','Storm','Orchard','Circuit','Ledger','Garden','Signal','Harbor','Bloom','Choir','Vessel','Mirror','Route','Hymn'];
+const monos = [];
+{
+  const R = mulberry32(7);
+  ZONES.forEach((z, zi) => {
+    for(let i=0;i<10;i++){
+      const num = 1 + Math.floor(R()*9077);
+      const cv = document.createElement('canvas'); cv.width = 96; cv.height = 128;
+      paintPiece(cv, num*7919+13, 128);
+      monos.push({
+        num, zone: zi,
+        title: W1[Math.floor(R()*W1.length)] + ' ' + W2[Math.floor(R()*W2.length)],
+        date: dateFor(num),
+        x: z.x0 + 260 + R()*(z.x1 - z.x0 - 520),
+        y: z.y0 + 260 + R()*(z.y1 - z.y0 - 520),
+        w: 52, h: 70, thumb: cv,
+      });
+    }
+  });
+}
+
+/* ---------- car ---------- */
+const car = { x: WW/2, y: WH/2 + 200, a: -Math.PI/2, v: 0 };
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.code] = false);
+const isTouch = matchMedia('(pointer: coarse)').matches;
+if(isTouch) document.body.classList.add('touch');
+const btn = {};
+for(const id of ['bu','bd','bl','br']){
+  const el = document.getElementById(id);
+  btn[id] = false;
+  el.addEventListener('pointerdown', e => { btn[id] = true; el.classList.add('on'); e.preventDefault(); });
+  const off = () => { btn[id] = false; el.classList.remove('on'); };
+  el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('pointerleave', off);
+}
+const up = () => keys.KeyW || keys.ArrowUp || btn.bu;
+const dn = () => keys.KeyS || keys.ArrowDown || btn.bd;
+const lf = () => keys.KeyA || keys.ArrowLeft || btn.bl;
+const rt = () => keys.KeyD || keys.ArrowRight || btn.br;
+
+/* ---------- view ---------- */
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const map = document.getElementById('map'), mctx = map.getContext('2d');
+let W, H;
+function size(){ W = innerWidth; H = innerHeight;
+  cv.width = W*Math.min(devicePixelRatio,2); cv.height = H*Math.min(devicePixelRatio,2);
+  ctx.setTransform(Math.min(devicePixelRatio,2),0,0,Math.min(devicePixelRatio,2),0,0); }
+size(); addEventListener('resize', size);
+
+const cam = { x: car.x, y: car.y };
+const card = document.getElementById('card');
+const cardT = card.querySelector('.t'), cardD = card.querySelector('.d');
+const speedEl = document.getElementById('speed');
+let last = performance.now();
+
+function collideMono(){
+  for(const m of monos){
+    const nx = Math.max(m.x - m.w/2, Math.min(car.x, m.x + m.w/2));
+    const ny = Math.max(m.y - m.h/2, Math.min(car.y, m.y + m.h/2));
+    const dx = car.x - nx, dy = car.y - ny, d = Math.hypot(dx, dy);
+    if(d < 16){
+      if(d > .01){ car.x = nx + dx/d*16; car.y = ny + dy/d*16; }
+      car.v *= .4;
+    }
+  }
+}
+
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last)/1000, .05); last = now;
+  // physics
+  const MAXV = 420, ACC = 520;
+  if(up()) car.v += ACC*dt;
+  if(dn()) car.v -= ACC*1.4*dt;
+  car.v *= Math.pow(.35, dt); // friction
+  car.v = Math.max(-MAXV*.4, Math.min(MAXV, car.v));
+  const steer = (lf() ? -1 : 0) + (rt() ? 1 : 0);
+  car.a += steer * 2.4 * dt * Math.max(.25, Math.min(1, Math.abs(car.v)/MAXV)) * (car.v < 0 ? -1 : 1);
+  car.x += Math.cos(car.a) * car.v * dt;
+  car.y += Math.sin(car.a) * car.v * dt;
+  car.x = Math.max(30, Math.min(WW-30, car.x));
+  car.y = Math.max(30, Math.min(WH-30, car.y));
+  collideMono();
+  // camera follows with lookahead
+  const lx = car.x + Math.cos(car.a)*car.v*.35, ly = car.y + Math.sin(car.a)*car.v*.35;
+  cam.x += (lx - cam.x)*.08; cam.y += (ly - cam.y)*.08;
+  speedEl.textContent = Math.round(Math.abs(car.v)*.28) + ' km/h';
+
+  /* draw */
+  ctx.fillStyle = '#070708'; ctx.fillRect(0, 0, W, H);
+  const ox = W/2 - cam.x, oy = H/2 - cam.y;
+  // zone washes + labels
+  ctx.textAlign = 'center';
+  for(const z of ZONES){
+    ctx.fillStyle = z.css + '0d';
+    ctx.fillRect(z.x0 + ox, z.y0 + oy, z.x1 - z.x0, z.y1 - z.y0);
+    ctx.strokeStyle = z.css + '44'; ctx.lineWidth = 2;
+    ctx.strokeRect(z.x0 + ox, z.y0 + oy, z.x1 - z.x0, z.y1 - z.y0);
+    ctx.fillStyle = z.css + '55';
+    ctx.font = '600 44px Georgia';
+    ctx.fillText(z.name, (z.x0+z.x1)/2 + ox, (z.y0+z.y1)/2 + oy - 330);
+  }
+  // ground grid
+  ctx.strokeStyle = 'rgba(255,255,255,.045)'; ctx.lineWidth = 1;
+  const gs = 200;
+  const gx0 = Math.floor((cam.x - W/2)/gs)*gs, gx1 = cam.x + W/2;
+  const gy0 = Math.floor((cam.y - H/2)/gs)*gs, gy1 = cam.y + H/2;
+  ctx.beginPath();
+  for(let x=gx0; x<gx1; x+=gs){ ctx.moveTo(x+ox, gy0+oy); ctx.lineTo(x+ox, gy1+oy); }
+  for(let y=gy0; y<gy1; y+=gs){ ctx.moveTo(gx0+ox, y+oy); ctx.lineTo(gx1+ox, y+oy); }
+  ctx.stroke();
+  // monoliths
+  let near = null, nd = 170;
+  for(const m of monos){
+    const sx = m.x + ox, sy = m.y + oy;
+    if(sx < -80 || sy < -80 || sx > W+80 || sy > H+80) continue;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(sx - m.w/2 - 4, sy - m.h/2 - 4, m.w + 8, m.h + 8);
+    ctx.strokeStyle = ZONES[m.zone].css + '88'; ctx.lineWidth = 2;
+    ctx.strokeRect(sx - m.w/2 - 4, sy - m.h/2 - 4, m.w + 8, m.h + 8);
+    ctx.drawImage(m.thumb, sx - m.w/2, sy - m.h/2, m.w, m.h);
+    const d = Math.hypot(m.x - car.x, m.y - car.y);
+    if(d < nd){ nd = d; near = m; }
+  }
+  // headlights cone
+  const hx = car.x + ox, hy = car.y + oy;
+  const hg = ctx.createRadialGradient(hx, hy, 10, hx + Math.cos(car.a)*150, hy + Math.sin(car.a)*150, 190);
+  hg.addColorStop(0, 'rgba(255,240,200,.10)'); hg.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = hg;
+  ctx.beginPath(); ctx.moveTo(hx, hy);
+  ctx.arc(hx, hy, 200, car.a - .5, car.a + .5); ctx.closePath(); ctx.fill();
+  // car
+  ctx.save(); ctx.translate(hx, hy); ctx.rotate(car.a);
+  ctx.fillStyle = '#e8e4dc';
+  ctx.beginPath();
+  ctx.moveTo(20, 0); ctx.lineTo(-12, -11); ctx.lineTo(-6, 0); ctx.lineTo(-12, 11);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#c65a34'; ctx.fillRect(-14, -8, 5, 5); ctx.fillRect(-14, 3, 5, 5);
+  ctx.restore();
+
+  // proximity card
+  if(near){
+    cardT.textContent = `№${near.num} · ${near.title}`;
+    cardD.textContent = near.date;
+    card.classList.add('show');
+  } else card.classList.remove('show');
+
+  /* minimap */
+  const mw = 150, mh = 110, k = Math.min(mw/WW, mh/WH);
+  mctx.clearRect(0, 0, mw, mh);
+  mctx.fillStyle = '#0a0a0c'; mctx.fillRect(0, 0, mw, mh);
+  for(const z of ZONES){ mctx.fillStyle = z.css + '33'; mctx.fillRect(z.x0*k, z.y0*k, (z.x1-z.x0)*k, (z.y1-z.y0)*k); }
+  for(const m of monos){ mctx.fillStyle = ZONES[m.zone].css; mctx.fillRect(m.x*k-1, m.y*k-1, 2, 2); }
+  mctx.fillStyle = '#fff';
+  mctx.beginPath(); mctx.arc(car.x*k, car.y*k, 3, 0, 7); mctx.fill();
+  mctx.strokeStyle = 'rgba(255,255,255,.35)';
+  mctx.strokeRect((cam.x - W/2)*k, (cam.y - H/2)*k, W*k, H*k);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
