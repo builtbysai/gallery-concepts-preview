@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rooms — Gallery Concept</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0d0d0c; color:#e8e4dc; font-family:Georgia, serif; overflow:hidden; height:100vh; }
+  #scene { position:fixed; inset:0; }
+  .room-label { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; pointer-events:none; z-index:5; transition:opacity .8s; }
+  .room-label h2 { font-size:52px; font-weight:400; letter-spacing:.02em; margin-bottom:10px; text-shadow:0 2px 30px rgba(0,0,0,.8); }
+  .room-label p { font-size:15px; opacity:.6; font-style:italic; }
+  .nav { position:fixed; bottom:0; left:0; right:0; display:flex; z-index:10; background:rgba(10,10,10,.7); backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,.08); }
+  .nav button { flex:1; background:none; border:none; color:#e8e4dc; padding:18px 8px; font-family:inherit; cursor:pointer; border-right:1px solid rgba(255,255,255,.06); transition:background .2s; }
+  .nav button:last-child { border-right:none; }
+  .nav button:hover { background:rgba(255,255,255,.06); }
+  .nav button.active { background:rgba(255,255,255,.1); }
+  .nav button .era { display:block; font-size:11px; letter-spacing:.15em; text-transform:uppercase; opacity:.5; margin-bottom:4px; }
+  .nav button .name { display:block; font-size:15px; }
+  .hint { position:fixed; top:24px; right:28px; font-size:13px; opacity:.4; font-style:italic; z-index:10; }
+  .counter { position:fixed; top:24px; left:28px; font-size:13px; opacity:.4; z-index:10; letter-spacing:.1em; }
+  .piece-view { position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center; background:rgba(5,5,5,.94); }
+  .piece-view.show { display:flex; }
+  .piece-view .frame { max-width:70vh; max-height:70vh; aspect-ratio:1; background:#111; border:1px solid #333; display:flex; align-items:center; justify-content:center; }
+  .piece-view .meta { position:absolute; bottom:40px; text-align:center; }
+  .piece-view .meta h3 { font-size:22px; font-weight:400; margin-bottom:6px; }
+  .piece-view .meta p { font-size:13px; opacity:.5; }
+  .piece-view .close { position:absolute; top:24px; right:28px; background:none; border:1px solid rgba(255,255,255,.2); color:#fff; width:44px; height:44px; border-radius:50%; font-size:18px; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="room-label" id="roomLabel"><h2></h2><p></p></div>
+<div class="counter" id="counter"></div>
+<div class="hint">Click a piece to view · Use rooms below to travel eras</div>
+<nav class="nav" id="nav"></nav>
+<div class="piece-view" id="pv">
+  <button class="close" id="pvc">✕</button>
+  <div class="frame" id="pvframe"><span style="opacity:.3;font-style:italic">piece</span></div>
+  <div class="meta"><h3 id="pvt"></h3><p id="pvm"></p></div>
+</div>
+<script>
+const cv = document.getElementById('scene');
+const ctx = cv.getContext('2d');
+let W, H;
+function resize() {
+  W = innerWidth; H = innerHeight;
+  cv.width = W; cv.height = H;
+}
+resize(); addEventListener('resize', resize);
+
+const rooms = [
+  { era:'2002 — 2007', name:'The Sketchbooks', desc:'Early marks. Learning the hand.', bg:'#141210', accent:200, n:90 },
+  { era:'2008 — 2013', name:'The Print Room', desc:'Ink, paper, pressure.', bg:'#100f0d', accent:35, n:120 },
+  { era:'2014 — 2019', name:'The Dark Field', desc:'Neon on black. The turn.', bg:'#0a0a0c', accent:280, n:150 },
+  { era:'2020 — 2026', name:'The Current', desc:'Motion, systems, flow.', bg:'#0c0a0a', accent:15, n:140 },
+];
+let current = 3, pieces = [], t = 0;
+
+function buildRoom(i) {
+  current = i;
+  const r = rooms[i];
+  pieces = [];
+  const titles = ['Vortex','Drift','Shimmer','Desordres','Orbits','Impression','Raster','Hatch'];
+  for (let k = 0; k < r.n; k++) {
+    const a = Math.random() * Math.PI * 2;
+    const rad = 80 + Math.random() * Math.min(W, H) * .42;
+    pieces.push({
+      x: W/2 + Math.cos(a) * rad * (W > H ? 1.4 : .8),
+      y: H/2 + Math.sin(a) * rad * .62,
+      z: Math.random(),
+      s: 3 + Math.random() * 9,
+      hue: r.accent + (Math.random() - .5) * 40,
+      title: titles[Math.floor(Math.random() * titles.length)],
+      num: Math.floor(Math.random() * 9078) + 1,
+      motion: Math.random() < .13,
+      ph: Math.random() * 7,
+      vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3,
+    });
+  }
+  const rl = document.getElementById('roomLabel');
+  rl.querySelector('h2').textContent = r.name;
+  rl.querySelector('p').textContent = r.desc;
+  rl.style.opacity = 1;
+  setTimeout(() => rl.style.opacity = 0, 2200);
+  document.getElementById('counter').textContent = `${r.era} · ${r.n} pieces in view`;
+  document.querySelectorAll('#nav button').forEach((b, j) => b.classList.toggle('active', j === i));
+}
+
+const nav = document.getElementById('nav');
+rooms.forEach((r, i) => {
+  const b = document.createElement('button');
+  b.innerHTML = `<span class="era">${r.era}</span><span class="name">${r.name}</span>`;
+  b.addEventListener('click', () => buildRoom(i));
+  nav.appendChild(b);
+});
+
+let mx = 0, my = 0;
+addEventListener('pointermove', e => { mx = e.clientX / W - .5; my = e.clientY / H - .5; });
+addEventListener('click', e => {
+  if (e.target.closest('.nav') || e.target.closest('.piece-view')) return;
+  let best = null, bd = 1e9;
+  for (const p of pieces) {
+    const d = Math.hypot(e.clientX - p.x, e.clientY - p.y);
+    if (d < bd && d < 24) { bd = d; best = p; }
+  }
+  if (best) {
+    document.getElementById('pvt').textContent = `№${best.num} · ${best.title}`;
+    document.getElementById('pvm').textContent = `${rooms[current].era} · ${best.motion ? 'Motion' : 'Static'}`;
+    document.getElementById('pvframe').style.background = `hsl(${best.hue},30%,8%)`;
+    document.getElementById('pv').classList.add('show');
+  }
+});
+document.getElementById('pvc').addEventListener('click', () => document.getElementById('pv').classList.remove('show'));
+
+function frame() {
+  t += .01;
+  const r = rooms[current];
+  // Room atmosphere
+  const grd = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * .7);
+  grd.addColorStop(0, r.bg);
+  grd.addColorStop(1, '#060606');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Dust motes
+  ctx.fillStyle = `hsla(${r.accent},40%,50%,.06)`;
+  for (let i = 0; i < 40; i++) {
+    const dx = (i * 137.5 + t * 12) % W, dy = (i * 89.3 + t * 7) % H;
+    ctx.beginPath(); ctx.arc(dx, dy, 1.2, 0, 7); ctx.fill();
+  }
+
+  for (const p of pieces) {
+    p.x += p.vx + mx * p.z * 2; p.y += p.vy + my * p.z * 2;
+    p.ph += .02;
+    const tw = .6 + .4 * Math.sin(p.ph);
+    const breathe = 1 + .06 * Math.sin(t * 2 + p.ph);
+
+    ctx.fillStyle = `hsla(${p.hue},60%,60%,${.75 * tw})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.s * breathe * (0.6 + p.z * 0.6), 0, 7); ctx.fill();
+    if (p.motion) {
+      ctx.strokeStyle = `hsla(${p.hue},60%,60%,${.4 * tw})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * breathe + 6, 0, 7); ctx.stroke();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+buildRoom(3);
+frame();
+</script>
+</body>
+</html>

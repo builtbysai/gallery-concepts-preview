@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Long Exposure — Gallery Concept</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#060606; color:#e8e4dc; font-family:Georgia, serif; overflow:hidden; height:100vh; }
+  #canvas { position:fixed; inset:0; }
+  .overlay { position:fixed; inset:0; pointer-events:none; display:flex; flex-direction:column; justify-content:space-between; padding:40px; }
+  .top h1 { font-size:15px; font-weight:400; letter-spacing:.25em; text-transform:uppercase; opacity:.6; }
+  .top .count { font-size:64px; font-weight:400; margin-top:8px; }
+  .top .count span { font-size:18px; opacity:.5; }
+  .bottom { display:flex; justify-content:space-between; align-items:flex-end; }
+  .hint { font-size:14px; opacity:.45; font-style:italic; pointer-events:auto; }
+  .years { font-size:13px; opacity:.45; letter-spacing:.1em; }
+  .piece-label { position:fixed; pointer-events:none; background:rgba(10,10,10,.85); border:1px solid #333; padding:10px 14px; border-radius:3px; font-size:13px; display:none; z-index:10; backdrop-filter:blur(4px); }
+  .piece-label strong { display:block; font-size:15px; margin-bottom:2px; }
+  .piece-label span { opacity:.6; font-size:12px; }
+  .controls { position:fixed; bottom:40px; left:50%; transform:translateX(-50%); display:flex; gap:12px; pointer-events:auto; }
+  .controls button { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); color:#e8e4dc; padding:8px 20px; border-radius:20px; font-size:13px; cursor:pointer; font-family:inherit; backdrop-filter:blur(4px); }
+  .controls button:hover { background:rgba(255,255,255,.15); }
+  .intro { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(6,6,6,.92); z-index:20; transition:opacity 1.2s; }
+  .intro.hide { opacity:0; pointer-events:none; }
+  .intro div { text-align:center; max-width:520px; padding:32px; }
+  .intro h2 { font-size:34px; font-weight:400; margin-bottom:16px; }
+  .intro p { font-size:16px; line-height:1.7; opacity:.65; margin-bottom:28px; }
+  .intro button { background:#e8e4dc; color:#060606; border:none; padding:14px 44px; border-radius:30px; font-size:15px; cursor:pointer; font-family:inherit; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="overlay">
+  <div class="top">
+    <h1>Generative Doodles</h1>
+    <div class="count"><span id="visible">0</span> <span>/ 9,078</span></div>
+  </div>
+  <div class="bottom">
+    <div class="hint">Drag to travel through time · Scroll to dive deeper · Click a trail to open the piece</div>
+    <div class="years">2002 — 2026</div>
+  </div>
+</div>
+<div class="piece-label" id="label"><strong></strong><span></span></div>
+<div class="controls">
+  <button id="play">❚❚ Pause drift</button>
+  <button id="trails">Trails: on</button>
+</div>
+<div class="intro" id="intro">
+  <div>
+    <h2>The Long Exposure</h2>
+    <p>Twenty-five years of generative art as a single photograph. Each piece is a point of light. Time flows left to right. The collection doesn't sit in a database — it hangs in the dark like stars, and you drift through it.</p>
+    <button id="enter">Enter</button>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('canvas');
+const ctx = cv.getContext('2d');
+let W, H, DPR;
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize(); addEventListener('resize', resize);
+
+// Generate 600 mock pieces across 25 years
+const pieces = [];
+const titles = ['Vortex','Drift','Shimmer','Desordres','Orbits','Contours','Impression','Raster','Hatch','Warp','Compass','Meridian','Bloom','Rain','Scanline'];
+const hues = [210, 18, 45, 160, 280, 0]; // blue, orange, gold, teal, purple, red
+for (let i = 0; i < 600; i++) {
+  const t = Math.random(); // 0=2002, 1=2026
+  pieces.push({
+    x: t, y: Math.random(),
+    vx: (Math.random() - .5) * .0004, vy: (Math.random() - .5) * .0004,
+    hue: hues[Math.floor(Math.random() * hues.length)],
+    size: 1 + Math.random() * 2.5,
+    num: Math.floor(t * 9078) + 1,
+    title: titles[Math.floor(Math.random() * titles.length)],
+    year: 2002 + Math.floor(t * 25),
+    motion: Math.random() < .13,
+    tw: Math.random() * Math.PI * 2,
+  });
+}
+
+let drift = true, trails = true, mx = 0, my = 0, tmx = 0, tmy = 0;
+let time = 0, visibleCount = 0;
+const label = document.getElementById('label');
+
+addEventListener('pointermove', e => { tmx = (e.clientX / W - .5); tmy = (e.clientY / H - .5); });
+let dragging = false, dragX = 0;
+addEventListener('pointerdown', e => { dragging = true; dragX = e.clientX; });
+addEventListener('pointerup', e => {
+  if (dragging && Math.abs(e.clientX - dragX) < 6) {
+    // Click: find nearest piece
+    let best = null, bd = 1e9;
+    for (const p of pieces) {
+      const px = p.x * W, py = p.y * H;
+      const d = Math.hypot(e.clientX - px, e.clientY - py);
+      if (d < bd && d < 30) { bd = d; best = p; }
+    }
+    if (best) {
+      label.querySelector('strong').textContent = `№${best.num} · ${best.title}`;
+      label.querySelector('span').textContent = `${best.year} · ${best.motion ? 'Motion' : 'Static'}`;
+      label.style.display = 'block';
+      label.style.left = (e.clientX + 14) + 'px';
+      label.style.top = (e.clientY - 10) + 'px';
+      setTimeout(() => label.style.display = 'none', 2600);
+    }
+  }
+  dragging = false;
+});
+
+document.getElementById('play').addEventListener('click', e => {
+  drift = !drift;
+  e.target.textContent = drift ? '❚❚ Pause drift' : '▶ Resume drift';
+});
+document.getElementById('trails').addEventListener('click', e => {
+  trails = !trails;
+  e.target.textContent = trails ? 'Trails: on' : 'Trails: off';
+});
+document.getElementById('enter').addEventListener('click', () => {
+  document.getElementById('intro').classList.add('hide');
+});
+
+function frame() {
+  time += .008;
+  mx += (tmx - mx) * .04; my += (tmy - my) * .04;
+
+  if (trails) {
+    ctx.fillStyle = 'rgba(6,6,6,.14)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#060606';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  visibleCount = 0;
+  for (const p of pieces) {
+    if (drift && !dragging) { p.x += p.vx; p.y += p.vy; }
+    if (dragging) { p.x -= (tmx * .002); }
+    // Wrap
+    if (p.x < -0.02) p.x = 1.02; if (p.x > 1.02) p.x = -0.02;
+    if (p.y < -0.02) p.y = 1.02; if (p.y > 1.02) p.y = -0.02;
+
+    const px = p.x * W + mx * 30, py = p.y * H + my * 30;
+    if (px < 0 || px > W || py < 0 || py > H) continue;
+    visibleCount++;
+
+    p.tw += .03;
+    const tw = .55 + .45 * Math.sin(p.tw);
+    const s = p.size * (p.motion ? 1.6 : 1);
+
+    // Glow
+    const g = ctx.createRadialGradient(px, py, 0, px, py, s * 6);
+    g.addColorStop(0, `hsla(${p.hue},70%,60%,${.5 * tw})`);
+    g.addColorStop(1, `hsla(${p.hue},70%,60%,0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px, py, s * 6, 0, 7); ctx.fill();
+
+    // Core
+    ctx.fillStyle = `hsla(${p.hue},80%,72%,${.9 * tw})`;
+    ctx.beginPath(); ctx.arc(px, py, s, 0, 7); ctx.fill();
+
+    if (p.motion) {
+      ctx.strokeStyle = `hsla(${p.hue},70%,60%,${.35 * tw})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(px, py, s + 5, 0, 7); ctx.stroke();
+    }
+  }
+
+  document.getElementById('visible').textContent = visibleCount;
+  requestAnimationFrame(frame);
+}
+ctx.fillStyle = '#060606'; ctx.fillRect(0, 0, W, H);
+frame();
+</script>
+</body>
+</html>
