@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Pieces Run</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0a0a0a; color:#e8e4dc; font-family:Georgia, serif; height:100vh; overflow:hidden; }
+  #stage { position:fixed; inset:0; }
+  #stage canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .chrome { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  .top { position:absolute; top:0; left:0; right:0; padding:28px 36px; display:flex; justify-content:space-between; align-items:baseline; background:linear-gradient(rgba(0,0,0,.55), transparent); }
+  .top h1 { font-size:13px; font-weight:400; letter-spacing:.28em; text-transform:uppercase; opacity:.7; }
+  .top .num { font-size:13px; opacity:.5; letter-spacing:.1em; }
+  .bottom { position:absolute; bottom:0; left:0; right:0; padding:28px 36px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(transparent, rgba(0,0,0,.6)); }
+  .title { font-size:26px; font-weight:400; }
+  .title span { font-size:14px; opacity:.5; margin-left:12px; }
+  .controls { display:flex; gap:10px; pointer-events:auto; }
+  .controls button { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); color:#fff; padding:10px 22px; border-radius:24px; font-size:13px; cursor:pointer; font-family:inherit; backdrop-filter:blur(6px); }
+  .controls button:hover { background:rgba(255,255,255,.2); }
+  .fade { transition:opacity .9s; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div class="chrome">
+  <div class="top"><h1>Generative Doodles</h1><div class="num" id="counter">— / 9,078</div></div>
+  <div class="bottom">
+    <div class="title fade" id="title">Loading…<span></span></div>
+    <div class="controls">
+      <button id="prev">← Prev</button>
+      <button id="reroll">↻ Re-run</button>
+      <button id="next">Next →</button>
+    </div>
+  </div>
+</div>
+<script>
+// Three live generative pieces (simplified stand-ins for the real piece code)
+const pieces = [
+  { num: 10, title: 'Drift', date: '2002 · 01 · 21', run(ctx, W, H, t, seed) {
+    // Vortex flow field
+    ctx.fillStyle = 'rgba(8,8,10,.08)'; ctx.fillRect(0, 0, W, H);
+    const rnd = mulberry(seed);
+    for (let i = 0; i < 120; i++) {
+      const a = rnd() * 7, r = rnd() * Math.min(W, H) * .4;
+      const x = W/2 + Math.cos(a + t * .3) * r, y = H/2 + Math.sin(a + t * .3) * r * .8;
+      const hue = [320, 45, 190][i % 3];
+      ctx.strokeStyle = `hsla(${hue},70%,60%,.5)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a + t) * 24, y + Math.sin(a + t) * 24); ctx.stroke();
+    }
+  }},
+  { num: 14, title: 'Armature', date: '2002 · 01 · 25', run(ctx, W, H, t, seed) {
+    // Rotating wireframe
+    ctx.fillStyle = '#0a0a0c'; ctx.fillRect(0, 0, W, H);
+    const cx = W/2, cy = H/2, R = Math.min(W, H) * .28;
+    const pts = [];
+    for (let i = 0; i < 12; i++) {
+      const th = (i / 12) * Math.PI * 2 + t * .4;
+      const ph = Math.acos(1 - 2 * (i + .5) / 12);
+      pts.push([R * Math.sin(ph) * Math.cos(th), R * Math.sin(ph) * Math.sin(th), R * Math.cos(ph)]);
+    }
+    // Project
+    const pr = pts.map(([x, y, z]) => {
+      const s = 1.6 / (1.6 + z / R * .8);
+      return [cx + x * s, cy + y * s, z];
+    });
+    const hues = [190, 320];
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < pr.length; i++) for (let j = i + 1; j < pr.length; j++) {
+      const d = Math.hypot(pts[i][0]-pts[j][0], pts[i][1]-pts[j][1], pts[i][2]-pts[j][2]);
+      if (d < R * 1.15) {
+        ctx.strokeStyle = `hsla(${hues[(i+j)%2]},75%,62%,.55)`;
+        ctx.beginPath(); ctx.moveTo(pr[i][0], pr[i][1]); ctx.lineTo(pr[j][0], pr[j][1]); ctx.stroke();
+      }
+    }
+  }},
+  { num: 8926, title: 'Desordres', date: '2026 · 06 · 20', run(ctx, W, H, t, seed) {
+    // Breathing grid
+    ctx.fillStyle = '#ece5d3'; ctx.fillRect(0, 0, W, H);
+    const n = 9, s = Math.min(W, H) * .78 / n;
+    const ox = (W - s * n) / 2, oy = (H - s * n) / 2;
+    const rnd = mulberry(seed);
+    const jit = [];
+    for (let i = 0; i < n * n; i++) jit.push(rnd());
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const wob = Math.sin(t * 1.2 + i * .7 + j * .5) * 4;
+      const x = ox + i * s + s/2 + wob, y = oy + j * s + s/2 - wob;
+      const rot = Math.sin(t + jit[i*n+j] * 7) * .14;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+      ctx.strokeStyle = jit[i*n+j] > .92 ? '#c65a34' : '#201d17';
+      ctx.lineWidth = jit[i*n+j] > .92 ? 3 : 1.4;
+      const ss = s * .72;
+      ctx.strokeRect(-ss/2, -ss/2, ss, ss);
+      ctx.restore();
+    }
+  }},
+];
+function mulberry(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let z = Math.imul(a ^ a >>> 15, 1 | a);
+    z = z + Math.imul(z ^ z >>> 7, 61 | z) ^ z;
+    return ((z ^ z >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const stage = document.getElementById('stage');
+let idx = 0, seed = 7, t = 0, cv, ctx, W, H, raf;
+
+function load(i) {
+  idx = (i + pieces.length) % pieces.length;
+  const p = pieces[idx];
+  stage.innerHTML = '';
+  cv = document.createElement('canvas');
+  stage.appendChild(cv);
+  ctx = cv.getContext('2d');
+  W = cv.width = innerWidth; H = cv.height = innerHeight;
+  t = 0; seed = Math.floor(Math.random() * 99999);
+  document.getElementById('title').innerHTML = `№${p.num} · ${p.title}<span>${p.date}</span>`;
+  document.getElementById('counter').textContent = `${idx + 1} / 9,078`;
+  // Fade
+  const title = document.getElementById('title');
+  title.style.opacity = 0;
+  setTimeout(() => title.style.opacity = 1, 60);
+  cancelAnimationFrame(raf);
+  tick();
+}
+function tick() {
+  t += .016;
+  pieces[idx].run(ctx, W, H, t, seed);
+  raf = requestAnimationFrame(tick);
+}
+document.getElementById('prev').addEventListener('click', () => load(idx - 1));
+document.getElementById('next').addEventListener('click', () => load(idx + 1));
+document.getElementById('reroll').addEventListener('click', () => { seed = Math.floor(Math.random() * 99999); t = 0; });
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') load(idx - 1);
+  if (e.key === 'ArrowRight') load(idx + 1);
+  if (e.key === ' ') { seed = Math.floor(Math.random() * 99999); t = 0; e.preventDefault(); }
+});
+addEventListener('resize', () => { W = cv.width = innerWidth; H = cv.height = innerHeight; });
+load(0);
+</script>
+</body>
+</html>

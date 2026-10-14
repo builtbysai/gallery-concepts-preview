@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drift by Similarity</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0a0a0a; color:#e8e4dc; font-family:Georgia, serif; height:100vh; overflow:hidden; }
+  #field { position:fixed; inset:0; }
+  .piece { position:absolute; border-radius:6px; overflow:hidden; cursor:pointer; transition:transform .5s, box-shadow .5s; box-shadow:0 4px 24px rgba(0,0,0,.5); }
+  .piece:hover { transform:scale(1.06); box-shadow:0 8px 40px rgba(0,0,0,.7); z-index:5; }
+  .piece canvas { display:block; width:100%; height:100%; }
+  .piece .label { position:absolute; bottom:0; left:0; right:0; padding:8px 10px; font-size:11px; background:linear-gradient(transparent, rgba(0,0,0,.75)); opacity:0; transition:opacity .3s; }
+  .piece:hover .label { opacity:1; }
+  .chrome { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  .top { position:absolute; top:0; left:0; right:0; padding:24px 32px; display:flex; justify-content:space-between; background:linear-gradient(rgba(0,0,0,.55), transparent); }
+  .top h1 { font-size:12px; font-weight:400; letter-spacing:.3em; text-transform:uppercase; opacity:.6; }
+  .trail { font-size:12px; opacity:.5; letter-spacing:.1em; }
+  .bottom { position:absolute; bottom:0; left:0; right:0; padding:20px 32px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(transparent, rgba(0,0,0,.6)); }
+  .hint { font-size:12px; opacity:.4; letter-spacing:.1em; }
+  .back { pointer-events:auto; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); color:#fff; padding:9px 20px; border-radius:20px; font-size:12px; cursor:pointer; font-family:inherit; }
+  .back:hover { background:rgba(255,255,255,.2); }
+  .fade-in { animation:fadein .8s; }
+  @keyframes fadein { from { opacity:0; transform:scale(.94); } to { opacity:1; transform:scale(1); } }
+</style>
+</head>
+<body>
+<div id="field"></div>
+<div class="chrome">
+  <div class="top"><h1>Generative Doodles</h1><div class="trail" id="trail"></div></div>
+  <div class="bottom">
+    <div class="hint">click any piece to drift toward its kin</div>
+    <button class="back" id="back" style="visibility:hidden">← back out</button>
+  </div>
+</div>
+<script>
+// Drift by similarity: no search, no filters. Click a piece and the screen
+// refills with its visual kin. Wander by feel. (Mock: similarity is simulated
+// by palette/family tags; a real build would use image embeddings.)
+
+// Piece "families" (visual similarity groups)
+const pieces = [
+  { num: 8923, title: 'Night Water', date: '2026 · 06 · 17', fam: 'water', hue: 195 },
+  { num: 8926, title: 'Desordres', date: '2026 · 06 · 20', fam: 'grid', hue: 30 },
+  { num: 10, title: 'Drift', date: '2002 · 01 · 21', fam: 'flow', hue: 320 },
+  { num: 14, title: 'Armature', date: '2002 · 01 · 25', fam: 'wire', hue: 190 },
+  { num: 5210, title: 'Seven Moods', date: '2016 · 04 · 02', fam: 'dots', hue: 280 },
+  { num: 9078, title: 'Shimmer', date: '2026 · 11 · 19', fam: 'water', hue: 200 },
+  { num: 8925, title: 'Chord Orbits', date: '2026 · 06 · 19', fam: 'wire', hue: 45 },
+  { num: 8924, title: 'Contour Drift', date: '2026 · 06 · 18', fam: 'flow', hue: 160 },
+  { num: 16, title: 'Phyllotaxis', date: '2002 · 02 · 02', fam: 'dots', hue: 90 },
+  { num: 17, title: 'Weave', date: '2002 · 02 · 03', fam: 'grid', hue: 15 },
+  { num: 18, title: 'Lissajous', date: '2002 · 02 · 04', fam: 'flow', hue: 260 },
+  { num: 19, title: 'Stitch', date: '2002 · 02 · 05', fam: 'grid', hue: 0 },
+];
+
+// Simulated kinship: same family first, then adjacent hues
+function kin(p) {
+  return pieces.filter(q => q.num !== p.num).sort((a, b) => {
+    const fa = a.fam === p.fam ? 0 : 1, fb = b.fam === p.fam ? 0 : 1;
+    if (fa !== fb) return fa - fb;
+    return Math.abs(a.hue - p.hue) - Math.abs(b.hue - p.hue);
+  }).slice(0, 11);
+}
+
+// Tiny generative thumbnails per family
+function thumb(cv, p, seed) {
+  const c = cv.getContext('2d'), W = cv.width = 220, H = cv.height = 160;
+  let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  c.fillStyle = '#0b0b0d'; c.fillRect(0, 0, W, H);
+  if (p.fam === 'water') {
+    for (let i = 0; i < 60; i++) {
+      c.fillStyle = `hsla(${p.hue + rnd()*30},70%,${50+rnd()*20}%,${.3+rnd()*.5})`;
+      c.beginPath(); c.arc(rnd()*W, rnd()*H, 1+rnd()*3, 0, 7); c.fill();
+    }
+  } else if (p.fam === 'grid') {
+    c.strokeStyle = `hsla(${p.hue},60%,55%,.8)`; c.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 5; j++)
+      c.strokeRect(20+i*30+rnd()*4, 18+j*26+rnd()*4, 20, 18);
+  } else if (p.fam === 'flow') {
+    for (let i = 0; i < 26; i++) {
+      c.strokeStyle = `hsla(${(p.hue+i*8)%360},70%,60%,.5)`; c.lineWidth = 1.5;
+      const y = rnd()*H; c.beginPath(); c.moveTo(0, y);
+      c.bezierCurveTo(W*.3, y+rnd()*40-20, W*.6, y+rnd()*40-20, W, y+rnd()*30-15); c.stroke();
+    }
+  } else if (p.fam === 'wire') {
+    c.strokeStyle = `hsla(${p.hue},75%,62%,.6)`; c.lineWidth = 1;
+    const cx = W/2, cy = H/2;
+    for (let i = 0; i < 8; i++) {
+      const a = rnd()*7;
+      c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx+Math.cos(a)*70, cy+Math.sin(a)*55); c.stroke();
+    }
+    c.beginPath(); c.arc(cx, cy, 46, 0, 7); c.stroke();
+  } else { // dots
+    for (let i = 0; i < 80; i++) {
+      c.fillStyle = `hsla(${(p.hue+rnd()*50)%360},70%,58%,${.4+rnd()*.5})`;
+      c.beginPath(); c.arc(rnd()*W, rnd()*H, 1+rnd()*2.5, 0, 7); c.fill();
+    }
+  }
+}
+
+const field = document.getElementById('field');
+const trailEl = document.getElementById('trail');
+const backBtn = document.getElementById('back');
+let trail = [];
+
+function layout(list, center) {
+  field.innerHTML = '';
+  const W = innerWidth, H = innerHeight;
+  // Center piece (the one you came from) large, kin scattered around
+  const spots = [];
+  if (center) {
+    spots.push({ p: center, x: W/2 - 150, y: H/2 - 130, w: 300, h: 260, big: true });
+  }
+  const n = list.length;
+  for (let i = 0; i < n; i++) {
+    const col = i % 4, row = Math.floor(i / 4) % 3;
+    const w = 190, h = 140;
+    const x = 40 + col * (W - 80 - w*3) / 3 + (row % 2) * 30;
+    const y = 90 + row * (H - 220) / 2 + (col % 2) * 20;
+    // Don't overlap center
+    if (center && Math.abs(x + w/2 - W/2) < 220 && Math.abs(y + h/2 - H/2) < 200) continue;
+    spots.push({ p: list[i], x, y, w, h });
+  }
+  for (const s of spots) {
+    const d = document.createElement('div');
+    d.className = 'piece fade-in' + (s.big ? ' origin' : '');
+    d.style.cssText = `left:${s.x}px;top:${s.y}px;width:${s.w}px;height:${s.h}px;${s.big ? 'outline:1px solid rgba(255,255,255,.25);' : ''}`;
+    const cv = document.createElement('canvas');
+    d.appendChild(cv);
+    const lb = document.createElement('div');
+    lb.className = 'label';
+    lb.textContent = `№${s.p.num} · ${s.p.title}`;
+    d.appendChild(lb);
+    d.addEventListener('click', () => dive(s.p));
+    field.appendChild(d);
+    thumb(cv, s.p, s.p.num * 7919);
+  }
+  trailEl.textContent = trail.length ? trail.map(p => '№' + p.num).join(' → ') : '';
+  backBtn.style.visibility = trail.length ? 'visible' : 'hidden';
+}
+
+function dive(p) {
+  trail.push(p);
+  layout(kin(p), p);
+}
+backBtn.addEventListener('click', () => {
+  trail.pop();
+  const prev = trail[trail.length - 1];
+  layout(prev ? kin(prev) : pieces, prev || null);
+});
+
+// Start: the whole spread
+layout(pieces, null);
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Mode</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#000; color:#e8e4dc; font-family:Georgia, serif; height:100vh; overflow:hidden; }
+  #a, #b { position:fixed; inset:0; width:100%; height:100%; transition:opacity 3s; }
+  #b { opacity:0; }
+  .chrome { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  .top { position:absolute; top:0; left:0; right:0; padding:24px 32px; display:flex; justify-content:space-between; background:linear-gradient(rgba(0,0,0,.5), transparent); }
+  .top h1 { font-size:12px; font-weight:400; letter-spacing:.3em; text-transform:uppercase; opacity:.6; }
+  .dream { font-size:12px; opacity:.5; letter-spacing:.15em; }
+  .dream .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#7fd4ff; margin-right:8px; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+  .bottom { position:absolute; bottom:0; left:0; right:0; padding:24px 32px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(transparent, rgba(0,0,0,.55)); }
+  .title { font-size:22px; transition:opacity .8s; }
+  .title span { font-size:13px; opacity:.5; margin-left:10px; }
+  .hint { font-size:12px; opacity:.4; letter-spacing:.1em; }
+</style>
+</head>
+<body>
+<canvas id="a"></canvas><canvas id="b"></canvas>
+<div class="chrome">
+  <div class="top"><h1>Generative Doodles</h1><div class="dream"><span class="dot"></span>DREAMING</div></div>
+  <div class="bottom">
+    <div class="title" id="title">—<span></span></div>
+    <div class="hint">touch to wake · leave to dream</div>
+  </div>
+</div>
+<script>
+// Dream mode: the collection drifts through itself. Each "piece" is a live generative sketch.
+// Touch wakes it (pauses the dream, lets you look). Release and it dreams on.
+
+const dreams = [
+  { num: 8923, title: 'Night Water', date: '2026 · 06 · 17', draw(c, W, H, t, S) {
+    c.fillStyle = 'rgba(4,8,12,.06)'; c.fillRect(0,0,W,H);
+    for (let i = 0; i < 90; i++) {
+      const p = S[i];
+      p.x += Math.sin(t*.4 + p.ph) * .6; p.y += Math.cos(t*.3 + p.ph*1.7) * .5;
+      const tw = .4 + .6 * Math.abs(Math.sin(t + p.ph));
+      c.fillStyle = `hsla(${185 + p.h*30},70%,${55+tw*15}%,${.5*tw})`;
+      c.beginPath(); c.arc((p.x%1)*W, (p.y%1)*H, p.r*(0.8+tw*.5), 0, 7); c.fill();
+    }
+  }},
+  { num: 10, title: 'Drift', date: '2002 · 01 · 21', draw(c, W, H, t, S) {
+    c.fillStyle = 'rgba(8,8,10,.07)'; c.fillRect(0,0,W,H);
+    for (let i = 0; i < 70; i++) {
+      const p = S[i];
+      const a = t*.5 + p.ph;
+      const x = W/2 + Math.cos(a) * p.r * Math.min(W,H)*.4;
+      const y = H/2 + Math.sin(a*1.3) * p.r * Math.min(W,H)*.3;
+      c.strokeStyle = `hsla(${[320,45,190][i%3]},70%,60%,.45)`;
+      c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a+1)*22, y + Math.sin(a+1)*22); c.stroke();
+    }
+  }},
+  { num: 5210, title: 'Seven Moods', date: '2016 · 04 · 02', draw(c, W, H, t, S) {
+    c.fillStyle = '#060606'; c.fillRect(0,0,W,H);
+    const hue = (t*8) % 360;
+    for (let i = 0; i < 110; i++) {
+      const p = S[i];
+      p.ph += .015;
+      const tw = .5 + .5*Math.sin(p.ph);
+      c.fillStyle = `hsla(${(hue + p.h*40)%360},70%,58%,${.75*tw})`;
+      c.beginPath(); c.arc(p.x*W, p.y*H, p.r*(0.7+tw*.6), 0, 7); c.fill();
+    }
+  }},
+  { num: 14, title: 'Armature', date: '2002 · 01 · 25', draw(c, W, H, t, S) {
+    c.fillStyle = '#0a0a0c'; c.fillRect(0,0,W,H);
+    const cx=W/2, cy=H/2, R=Math.min(W,H)*.26;
+    c.lineWidth = 1.2;
+    for (let i = 0; i < 10; i++) {
+      const th = (i/10)*Math.PI*2 + t*.35;
+      for (let j = i+1; j < 10; j++) {
+        const th2 = (j/10)*Math.PI*2 + t*.35;
+        const x1=cx+Math.cos(th)*R, y1=cy+Math.sin(th)*R*.8;
+        const x2=cx+Math.cos(th2)*R, y2=cy+Math.sin(th2)*R*.8;
+        if (Math.hypot(x1-x2, y1-y2) < R*1.2) {
+          c.strokeStyle = `hsla(${(i+j)%2?320:190},75%,62%,.4)`;
+          c.beginPath(); c.moveTo(x1,y1); c.lineTo(x2,y2); c.stroke();
+        }
+      }
+    }
+  }},
+];
+
+function seedState() {
+  const s = [];
+  for (let i = 0; i < 120; i++) s.push({ x: Math.random(), y: Math.random(), r: 1+Math.random()*3, ph: Math.random()*7, h: Math.random() });
+  return s;
+}
+
+const cvA = document.getElementById('a'), cvB = document.getElementById('b');
+const ctxA = cvA.getContext('2d'), ctxB = cvB.getContext('2d');
+let W, H;
+function size() { W = cvA.width = cvB.width = innerWidth; H = cvA.height = cvB.height = innerHeight; }
+size(); addEventListener('resize', size);
+
+let idx = 0, showing = 'a', t = 0, state = seedState();
+let dreaming = true, idleTimer = null;
+
+function showDream(i) {
+  idx = (i + dreams.length) % dreams.length;
+  const d = dreams[idx];
+  const title = document.getElementById('title');
+  title.style.opacity = 0;
+  setTimeout(() => {
+    title.innerHTML = `№${d.num} · ${d.title}<span>${d.date}</span>`;
+    title.style.opacity = 1;
+  }, 400);
+  state = seedState();
+  t = 0;
+  // Crossfade canvases
+  const show = showing === 'a' ? cvB : cvA;
+  const hide = showing === 'a' ? cvA : cvB;
+  show.style.opacity = 1; hide.style.opacity = 0;
+  showing = showing === 'a' ? 'b' : 'a';
+}
+
+function tick() {
+  t += .016;
+  const ctx = showing === 'a' ? ctxA : ctxB;
+  dreams[idx].draw(ctx, W, H, t, state);
+  requestAnimationFrame(tick);
+}
+
+// Dream advances every 14 seconds while dreaming
+let dreamInterval = setInterval(() => { if (dreaming) showDream(idx + 1); }, 14000);
+
+// Touch wakes; release resumes dreaming after 20s idle
+function wake() {
+  dreaming = false;
+  document.querySelector('.dream').innerHTML = 'AWAKE';
+  clearTimeout(idleTimer);
+  clearInterval(dreamInterval);
+}
+function sleep() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    dreaming = true;
+    document.querySelector('.dream').innerHTML = '<span class="dot"></span>DREAMING';
+    dreamInterval = setInterval(() => { if (dreaming) showDream(idx + 1); }, 14000);
+    showDream(idx + 1);
+  }, 20000);
+}
+addEventListener('pointerdown', wake);
+addEventListener('pointerup', sleep);
+// Tap left/right third to step manually while awake
+addEventListener('click', e => {
+  if (!dreaming) showDream(idx + (e.clientX > innerWidth * .66 ? 1 : -1));
+});
+
+showDream(0);
+tick();
+</script>
+</body>
+</html>
