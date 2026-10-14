@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gallery Concept A — Timeline River</title>
+<style>
+  :root { --ink:#1a1a1a; --paper:#faf9f7; --accent:#10406b; --rule:#e2ddd4; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Georgia, serif; background:var(--paper); color:var(--ink); }
+  header { padding:48px 32px 24px; max-width:1200px; margin:0 auto; }
+  .kicker { font-size:12px; letter-spacing:.15em; text-transform:uppercase; color:#888; margin-bottom:12px; }
+  h1 { font-size:42px; font-weight:400; margin-bottom:8px; }
+  .sub { font-size:17px; color:#555; max-width:640px; line-height:1.5; }
+  .stats { display:flex; gap:32px; margin-top:24px; padding-top:24px; border-top:1px solid var(--rule); }
+  .stat .n { font-size:32px; color:var(--accent); }
+  .stat .l { font-size:12px; text-transform:uppercase; letter-spacing:.1em; color:#888; }
+  .timeline-wrap { max-width:1200px; margin:32px auto; padding:0 32px; }
+  .years { display:flex; justify-content:space-between; font-size:12px; color:#999; margin-bottom:8px; padding:0 4px; }
+  .river { position:relative; height:320px; background:#fff; border:1px solid var(--rule); border-radius:4px; overflow:hidden; }
+  .year-band { position:absolute; top:0; bottom:0; border-left:1px solid var(--rule); }
+  .year-band span { position:absolute; top:8px; left:6px; font-size:11px; color:#aaa; }
+  .piece-dot { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--accent); opacity:.7; cursor:pointer; transform:translate(-50%,-50%); transition:transform .15s; }
+  .piece-dot:hover { transform:translate(-50%,-50%) scale(2.2); opacity:1; z-index:10; }
+  .piece-dot.motion { background:#c65a34; border-radius:2px; }
+  .piece-dot.featured { width:12px; height:12px; box-shadow:0 0 0 3px rgba(16,64,107,.2); }
+  .tooltip { position:absolute; background:#1a1a1a; color:#fff; padding:8px 12px; border-radius:4px; font-size:13px; pointer-events:none; display:none; z-index:20; white-space:nowrap; }
+  .legend { display:flex; gap:24px; margin-top:16px; font-size:13px; color:#666; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+  .detail { max-width:1200px; margin:32px auto; padding:0 32px; display:none; }
+  .detail.show { display:block; }
+  .detail-card { background:#fff; border:1px solid var(--rule); border-radius:4px; padding:24px; display:flex; gap:24px; }
+  .detail-card img { width:200px; height:200px; object-fit:cover; border-radius:2px; background:#111; }
+  .detail-card h2 { font-size:24px; margin-bottom:8px; font-weight:400; }
+  .detail-card .meta { font-size:13px; color:#888; margin-bottom:12px; }
+  .detail-card p { font-size:15px; line-height:1.6; color:#444; }
+  .note { max-width:1200px; margin:32px auto; padding:24px 32px; background:#fff8f0; border:1px solid #f0e0c8; border-radius:4px; font-size:14px; line-height:1.6; color:#665; }
+  .note strong { color:#443; }
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">Concept A</p>
+  <h1>Timeline River</h1>
+  <p class="sub">9,078 pieces across 25 years, one continuous river. Scroll through time. Dots are pieces; orange squares are motion pieces; larger dots are Hans's picks. Click any dot to preview.</p>
+  <div class="stats">
+    <div class="stat"><div class="n">9,078</div><div class="l">pieces</div></div>
+    <div class="stat"><div class="n">25</div><div class="l">years</div></div>
+    <div class="stat"><div class="n">~1,200</div><div class="l">motion</div></div>
+    <div class="stat"><div class="n">84</div><div class="l">curated</div></div>
+  </div>
+</header>
+
+<div class="timeline-wrap">
+  <div class="years"><span>2002</span><span>2007</span><span>2012</span><span>2017</span><span>2022</span><span>2026</span></div>
+  <div class="river" id="river">
+    <div class="tooltip" id="tip"></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:#10406b"></i>Static piece</span>
+    <span><i style="background:#c65a34;border-radius:2px"></i>Motion piece</span>
+    <span><i style="background:#10406b;box-shadow:0 0 0 3px rgba(16,64,107,.2)"></i>Hans's pick</span>
+  </div>
+</div>
+
+<div class="detail" id="detail">
+  <div class="detail-card">
+    <img id="dimg" src="" alt="">
+    <div>
+      <h2 id="dtitle"></h2>
+      <div class="meta" id="dmeta"></div>
+      <p id="ddesc"></p>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <strong>How it works:</strong> The river is a single horizontal scroll (or drag) across 25 years. Density shows output over time. Zoom with pinch or buttons to go from decade → year → month. Search box filters by title, concept, or color. "Hans's picks" toggle shows only curated pieces. Every dot links to the piece page. On mobile, the river becomes vertical scroll.
+  <br><br>
+  <strong>Why this fits 9,078 pieces:</strong> A grid of 9k thumbnails is unnavigable. The timeline turns quantity into a landscape — you see the shape of 25 years of work, then drill into moments. The curated layer gives newcomers an entry point without hiding the full archive.
+</div>
+
+<script>
+// Generate mock dots across 25 years
+const river = document.getElementById('river');
+const tip = document.getElementById('tip');
+const W = river.offsetWidth || 1136;
+
+// Year bands
+for (let y = 2002; y <= 2026; y++) {
+  const x = ((y - 2002) / 25) * 100;
+  const band = document.createElement('div');
+  band.className = 'year-band';
+  band.style.left = x + '%';
+  if (y % 5 === 0) band.innerHTML = `<span>${y}</span>`;
+  river.appendChild(band);
+}
+
+// Mock pieces (subset for demo)
+const titles = ['Vortex','Drift','Shimmer','Desordres','Chord Orbits','Contour Drift','Impression','Raster','Hatch','Warp','Compass','Meridian','Alluvium','Bloom','Vanishing','Orb','Rain','Scanline','Orbits','Contours'];
+for (let i = 0; i < 400; i++) {
+  const yearFrac = Math.random();
+  const year = 2002 + yearFrac * 24.9;
+  const x = (yearFrac * 100);
+  const y = 20 + Math.random() * 280;
+  const dot = document.createElement('div');
+  const isMotion = Math.random() < 0.13;
+  const isFeatured = Math.random() < 0.03;
+  dot.className = 'piece-dot' + (isMotion ? ' motion' : '') + (isFeatured ? ' featured' : '');
+  dot.style.left = x + '%';
+  dot.style.top = y + 'px';
+  const num = Math.floor(yearFrac * 9078) + 1;
+  const title = titles[Math.floor(Math.random() * titles.length)];
+  dot.dataset.info = `№${num} · ${title}|${Math.floor(year)} · ${isMotion ? 'Motion' : 'Static'}${isFeatured ? ' · ★' : ''}|A ${isMotion ? 'hypnotic motion loop' : 'rule-based composition'} from the ${Math.floor(year)} series.`;
+  dot.addEventListener('mouseenter', e => {
+    const [t, m, d] = dot.dataset.info.split('|');
+    tip.innerHTML = `<strong>${t}</strong><br><span style="opacity:.7">${m}</span>`;
+    tip.style.display = 'block';
+    tip.style.left = (e.target.offsetLeft + 12) + 'px';
+    tip.style.top = (e.target.offsetTop - 10) + 'px';
+  });
+  dot.addEventListener('mouseleave', () => tip.style.display = 'none');
+  dot.addEventListener('click', () => {
+    const [t, m, d] = dot.dataset.info.split('|');
+    document.getElementById('dtitle').textContent = t;
+    document.getElementById('dmeta').textContent = m;
+    document.getElementById('ddesc').textContent = d;
+    document.getElementById('dimg').style.background = isMotion ? '#1a0a0a' : '#111';
+    document.getElementById('detail').classList.add('show');
+    document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+  river.appendChild(dot);
+}
+</script>
+</body>
+</html>
